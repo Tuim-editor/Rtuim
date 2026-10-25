@@ -548,24 +548,12 @@ fn process_widget_side_effects(app: &mut App) {
 
     if let Some(cfg_path) = app.extension_shop.edit_config_path.take() {
         app.workspace.focus = FocusRegion::Editor;
-        let escaped = cfg_path.replace('\'', "''");
-        let lua = format!(
-            "vim.cmd('edit ' .. vim.fn.fnameescape('{}'))",
-            escaped
-        );
         let _ = app
             .editor_rpc
-            .notify("nvim_exec_lua", vec![Value::from(lua), Value::Array(vec![])]);
-    }
-    if app.extension_shop.sync_requested {
-        app.extension_shop.sync_requested = false;
-        let _ = app.editor_rpc.notify(
-            "nvim_exec_lua",
-            vec![
-                Value::from("if not vim.g.tuim_plugins_disabled then pcall(vim.cmd, 'Lazy sync') end"),
-                Value::Array(vec![]),
-            ],
-        );
+            .notify("nvim_exec_lua", vec![
+                Value::from("vim.cmd('edit ' .. vim.fn.fnameescape(...))"),
+                Value::Array(vec![Value::from(cfg_path)]),
+            ]);
     }
     if app.extension_shop.restart_requested {
         app.extension_shop.restart_requested = false;
