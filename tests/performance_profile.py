@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-import json, re
+import argparse, json, re
 from pathlib import Path
 
-PROFILE = Path(__file__).resolve().parents[1] / "docs/performance-profile.json"
+parser = argparse.ArgumentParser(description="Validate a generated performance profile or the synthetic schema fixture")
+parser.add_argument("profile", nargs="?", type=Path, default=Path(__file__).parent / "fixtures/performance-profile.json")
+PROFILE = parser.parse_args().profile
 profile = json.loads(PROFILE.read_text(encoding="utf-8"))
 assert profile["schema_version"] == 2
 assert profile["configuration"]["iterations"] >= 1

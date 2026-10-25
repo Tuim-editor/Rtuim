@@ -5,10 +5,11 @@ Build the Rust executable before recording observations:
 ```bash
 cargo build --locked --release
 python3 scripts/profile_tuim.py --iterations 5 --warmup 1
-python3 tests/performance_profile.py
+python3 tests/performance_profile.py target/performance-profile.json
 ```
 
-The harness writes `docs/performance-profile.json`. It records the Rust compiler,
+The harness writes `target/performance-profile.json`, which is ignored by Git.
+It records the Rust compiler,
 host target, binary SHA-256, optimization profile, sample distributions and
 exit status. An uncommitted checkout is labeled `uncommitted`.
 
@@ -18,11 +19,10 @@ initialization when opted in with `TUIM_PROFILE_PLUGINS=1` and installed plugins
 are available. Plugin profiling can require network access. Temporary fixtures and XDG
 directories keep the run separate from user settings.
 
-The checked-in record is a local Rust release-build observation with two measured
-iterations and no warmup. It replaces the obsolete Zig baseline. This small
-sample is a smoke measurement, not evidence of cross-platform performance or
-improvement over the former implementation. Consult the JSON for the host,
-compiler, timestamp, sample values, and unavailable scenarios.
+CI validates a small synthetic schema fixture in `tests/fixtures/`; it contains
+no real performance measurements. Run `python3 tests/performance_profile.py`
+without a path to check that fixture. Use the explicit generated report path
+shown above to validate measurements from your own build.
 
 Compare immutable binaries with `--baseline /path/to/old --candidate /path/to/new`
 on equivalent hardware, Neovim/plugin state and terminal dimensions. “Settled”

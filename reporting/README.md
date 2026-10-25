@@ -17,14 +17,19 @@ the single configured repository.
 
 ## Deploy
 
+The backend still expects the former `metadata`/`logs` payload, while the Rust
+client sends `diagnostics`. Adapt and validate the payload contract before
+deploying it for Rtuim.
+
 ```sh
 cd reporting
+cp wrangler.example.toml wrangler.toml
 npm install
 npx wrangler login
 npx wrangler kv namespace create REPORT_LIMITS
 ```
 
-Put the returned namespace ID in `wrangler.toml`, then configure secrets. Run
+Put the returned namespace ID in the ignored local `wrangler.toml`, then configure secrets. Run
 these commands yourself; do not paste their values into source files or chat:
 
 ```sh

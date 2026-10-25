@@ -1,4 +1,4 @@
-name = "tuim-bug-report"
+name = "rtuim-bug-report"
 main = "src/index.ts"
 compatibility_date = "2026-07-15"
 workers_dev = true
@@ -10,4 +10,4 @@ GITHUB_REPO = "Rtuim"
 
 [[kv_namespaces]]
 binding = "REPORT_LIMITS"
-id = "83a8939a558245bf81ac780051d1313a"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

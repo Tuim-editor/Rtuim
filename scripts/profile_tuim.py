@@ -195,7 +195,7 @@ def main():
     parser = argparse.ArgumentParser(description="Profile or compare immutable Tuim binaries")
     parser.add_argument("--binary", "--candidate", dest="candidate", default=str(ROOT / "target/release/tuim")); parser.add_argument("--baseline")
     parser.add_argument("--iterations", type=int, default=5); parser.add_argument("--warmup", type=int, default=1); parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--output", default=str(ROOT / "docs/performance-profile.json")); parser.add_argument("--optimization", default="release")
+    parser.add_argument("--output", default=str(ROOT / "target/performance-profile.json")); parser.add_argument("--optimization", default="release")
     args = parser.parse_args()
     if args.iterations < 1 or args.warmup < 0: parser.error("--iterations must be positive and --warmup non-negative")
     binaries = {"candidate": pathlib.Path(args.candidate)}
