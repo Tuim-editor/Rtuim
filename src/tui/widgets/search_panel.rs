@@ -169,10 +169,11 @@ impl SearchPanel {
         }
         let c = chrome(theme);
         renderer.fill_rect(rect, c.panel_bg);
+        let hdr = primitives::truncate_to_width("SEARCH", rect.w.saturating_sub(2) as usize);
         renderer.draw_text_styled(
             rect.x + 1,
             rect.y,
-            "SEARCH",
+            &hdr,
             c.text_muted,
             c.panel_bg,
             true,

@@ -1250,8 +1250,9 @@ fn handle_mouse_event(
     }
 
     // Handle active border dragging
+    let is_active_drag = pressed || (motion && (button & 3) != 3);
     if app.dragging_sidebar {
-        if !pressed {
+        if !is_active_drag {
             app.dragging_sidebar = false;
         } else {
             let new_w = mx.clamp(16, screen.w.saturating_sub(24).max(16));
@@ -1263,11 +1264,17 @@ fn handle_mouse_event(
         return;
     }
     if app.dragging_terminal {
-        if !pressed {
+        if !is_active_drag {
             app.dragging_terminal = false;
         } else {
-            let bottom = screen.h.saturating_sub(1);
-            let new_h = bottom.saturating_sub(my + 1).clamp(4, screen.h.saturating_sub(8).max(4));
+            let bottom = screen.h.saturating_sub(layout.status_bar.h);
+            let max_h = layout
+                .terminal
+                .h
+                .saturating_add(layout.editor.h)
+                .saturating_sub(2)
+                .max(2);
+            let new_h = bottom.saturating_sub(my + 1).clamp(2, max_h);
             if new_h != app.terminal_h {
                 app.terminal_h = new_h;
                 sync_layout(app);
@@ -1277,7 +1284,7 @@ fn handle_mouse_event(
     }
 
     if app.dragging_vertical_terminal {
-        if !pressed && !motion {
+        if !is_active_drag {
             app.dragging_vertical_terminal = false;
         } else {
             app.vertical_terminal_w = screen.w.saturating_sub(mx + 1).max(6);
@@ -1629,35 +1636,41 @@ fn handle_mouse_event(
     // Drawer header row & Drawer body
     if layout.terminal.h > 0 {
         let header_y = layout.terminal.y.saturating_sub(1);
-        if my == header_y && mx >= layout.terminal.x {
+        if my == header_y && mx >= layout.terminal.x && mx < layout.terminal.x + layout.terminal.w {
             if pressed && button == 0 {
                 let rel_x = mx - layout.terminal.x;
+                let mut switched_tab = false;
                 if layout.terminal.w >= 46 {
                     if (2..12).contains(&rel_x) {
                         app.workspace.drawer_tab = 0;
                         app.workspace.focus = FocusRegion::Drawer;
+                        switched_tab = true;
                     } else if (14..29).contains(&rel_x) {
                         app.workspace.drawer_tab = 1;
                         app.workspace.focus = FocusRegion::Drawer;
+                        switched_tab = true;
                     } else if (31..40).contains(&rel_x) {
                         app.workspace.drawer_tab = 2;
                         app.workspace.focus = FocusRegion::Drawer;
-                    } else {
-                        app.dragging_terminal = true;
+                        switched_tab = true;
                     }
                 } else if (1..7).contains(&rel_x) {
                     app.workspace.drawer_tab = 0;
                     app.workspace.focus = FocusRegion::Drawer;
+                    switched_tab = true;
                 } else if (8..15).contains(&rel_x) {
                     app.workspace.drawer_tab = 1;
                     app.workspace.focus = FocusRegion::Drawer;
+                    switched_tab = true;
                 } else if (16..22).contains(&rel_x) {
                     app.workspace.drawer_tab = 2;
                     app.workspace.focus = FocusRegion::Drawer;
-                } else {
-                    app.dragging_terminal = true;
+                    switched_tab = true;
                 }
-                if app.workspace.drawer_tab == 0 && !app.dragging_terminal { ensure_shell_terminal(app); }
+                app.dragging_terminal = true;
+                if switched_tab && app.workspace.drawer_tab == 0 {
+                    ensure_shell_terminal(app);
+                }
                 app.invalidations.mark_chrome();
             }
             return;

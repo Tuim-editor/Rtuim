@@ -113,6 +113,23 @@ def run():
             send("Escape")
             workspace()
             command("ai assistants")
+            wait(lambda: "3 Actions" in screen() and "[x]close" in screen(), "AI panel items missing")
+            for line in screen().splitlines()[:-1]:
+                assert "│" in line, line
+                left, right = line.split("│", 1)
+                assert "ctions" not in right and "[x]close" not in right, f"Left panel overflowed into editor: {line!r}"
+            click("3 Actions")
+            wait(lambda: "Explain Selection" in screen(), "Clicking wrapped 3 Actions tab did not switch section")
+            click("1 Agents")
+            wait(lambda: "Codex CLI" in screen(), "Clicking 1 Agents tab did not switch back")
+            # Drag the left panel divider wider and verify the sidebar expands and unwraps tabs.
+            div_x = screen().splitlines()[2].index("│")
+            assert div_x == 24, div_x
+            text(f"\x1b[<0;{div_x + 1};6M\x1b[<32;35;6M\x1b[<0;35;6m")
+            wait(lambda: screen().splitlines()[2].index("│") == 34, "Dragging left panel divider did not resize sidebar")
+            assert any("1 Agents  2 Context  3 Actions" in line.split("│", 1)[0] for line in screen().splitlines()), screen()
+            text("\x1b[<0;35;6M\x1b[<32;25;6M\x1b[<0;25;6m")
+            wait(lambda: screen().splitlines()[2].index("│") == 24, "Dragging left panel divider back did not restore width")
             hover_row("Open chat")
             send("Escape")
             workspace()
