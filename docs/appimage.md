@@ -40,7 +40,6 @@ and release-wide `SHA256SUMS`.
 
 ## Validation limits
 
-Old Zig-era distro smoke results have been removed. Validate the Rust packages
-on each destination before publishing. Local results and remaining issues are
-recorded in [migration audit](migration-audit.md). This refresh does not publish
-binaries, the website, or the GitHub wiki.
+Validate the Rust packages on each destination before publishing. See
+[terminal compatibility](terminal-compatibility.md) for tested platforms and
+outstanding validation. Local Linux builds inherit the build host's libc baseline.

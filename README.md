@@ -12,8 +12,7 @@ changes, and open coding assistants without leaving the terminal.
 Its configuration and plugins are isolated from your regular Neovim setup.
 
 [Source](https://github.com/Tuim-editor/Rtuim) ·
-[Usage guide](docs/usage.md) · [Local wiki](docs/wiki/Home.md) ·
-[Rust migration notes](docs/releases/rust-migration.md) ·
+[Usage guide](docs/usage.md) · [Troubleshooting](docs/troubleshooting.md) ·
 [Issues](https://github.com/Tuim-editor/Rtuim/issues)
 
 The executable is still named `tuim` and uses the existing Tuim configuration
@@ -143,7 +142,7 @@ selection Ctrl+C interrupts the running program. Paste with `Ctrl+V` or
 `Shift+Insert`; scroll with the mouse wheel or `Shift+PageUp/PageDown`.
 Modified keys depend on the outer terminal and tmux configuration.
 
-The [usage guide](docs/usage.md) and [keybinding reference](docs/wiki/Keybindings.md)
+The [usage guide](docs/usage.md) and [keybinding reference](docs/keybindings.md)
 include context-specific shortcuts and preset details.
 
 ## Configuration
@@ -206,8 +205,6 @@ The [CI workflow](.github/workflows/ci.yml) targets Linux and macOS. The
 [release workflow](.github/workflows/release.yml) builds each native bundle on
 its own platform and checks the tag against the Cargo package version.
 The [Pages workflow](.github/workflows/pages.yml) publishes the static website.
-Local wiki sources are in `docs/wiki/`; updating those files does not publish
-the GitHub wiki.
 
 ## Acknowledgements
 

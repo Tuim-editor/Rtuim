@@ -1,6 +1,6 @@
 # Keybindings Reference
 
-Default shortcuts and their contexts in Tuim 0.4.0. Saved custom bindings take
+Default shortcuts and their contexts in Rtuim. Saved custom bindings take
 precedence; terminal support determines which modified keys can be transmitted.
 
 ---

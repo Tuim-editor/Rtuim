@@ -5,7 +5,7 @@
 Run `TUIM_DISABLE_PLUGINS=1 tuim` to skip plugin loading without deleting plugin
 data. Repair plugin configuration through Extensions or the files in Tuim's
 `plugin_configs/` directory, then restart normally. See
-[plugin compatibility](../plugin-compatibility.md).
+[plugin compatibility](plugin-compatibility.md).
 
 ## Neovim or build failure
 
@@ -21,7 +21,7 @@ needed. Otherwise the editor and native terminals share Tuim's internal clipboar
 Select terminal text by dragging, then press Ctrl+C or Ctrl+Insert; release
 alone does not copy. Ctrl+C without selection interrupts the running program.
 
-Use [the keybinding reference](Keybindings.md). F1, F6 / Shift+F6, Alt+Arrows,
+Use [the keybinding reference](keybindings.md). F1, F6 / Shift+F6, Alt+Arrows,
 and mouse controls offer navigation and panel resizing when the outer terminal
 cannot distinguish modified keys. Shortcut customizations can be configured in
 Settings (`F1` → Settings → Keybindings).
@@ -30,7 +30,7 @@ Settings (`F1` → Settings → Keybindings).
 
 Disable **Settings → Appearance → Use Nerd Fonts** to use portable symbols.
 Color and modifier behavior depends on the terminal and tmux/SSH transport.
-See [terminal compatibility](../terminal-compatibility.md).
+See [terminal compatibility](terminal-compatibility.md).
 
 ## Diagnostics and reporting
 

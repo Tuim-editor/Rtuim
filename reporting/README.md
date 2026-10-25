@@ -52,6 +52,7 @@ setting or release-workflow endpoint variable in the Rust build.
   It does not attach the former Zig client’s log excerpt.
 - Runtime diagnostics include Tuim version, OS, architecture, mode, theme,
   terminal dimensions/capabilities and emitted bytes.
-- The client attempts home-path and token redaction. Known submission issues
-  are listed in [the migration audit](../docs/migration-audit.md).
+- The client attempts home-path and token redaction. Review reports before
+  sending; redaction cannot guarantee that every secret is detected. Transport
+  tests use local mocks; delivery to the live service still needs validation.
 - The gateway does not log report bodies or source IPs.

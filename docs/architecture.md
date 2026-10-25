@@ -104,7 +104,7 @@ terminating the editor session.
 
 ## Validation
 
-- `cargo test` executes 20 unit tests in `src/lib.rs` covering key sequence decoding,
+- `cargo test --locked` runs unit tests covering key sequence decoding,
   SGR mouse coordinate mapping, terminal emulator scrollback and device queries,
   layout constraints, default theme contrast, and settings serialization.
 - Python and shell test suites under `tests/` validate real PTY sessions, Neovim

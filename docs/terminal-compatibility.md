@@ -14,7 +14,8 @@ are not evidence for the new executable.
 
 The tmux tests exercised command binding/persistence, bottom and right PTYs,
 clipboard variants, Unicode, Zen, resizing and cleanup. They do not establish
-compatibility with every outer terminal emulator. See [migration audit](migration-audit.md).
+compatibility with every outer terminal emulator. Full plugin/parser installation
+and live bug-report delivery still require separate validation.
 
 ## Capability detection
 
