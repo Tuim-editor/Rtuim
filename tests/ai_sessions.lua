@@ -1,0 +1,56 @@
+local events = {}
+local native_terminal_requested = false
+vim.rpcnotify = function(_, method, ...)
+    if method == 'tuim_ai_status' then table.insert(events, {...}) end
+    if method == 'tuim_open_terminal_right' then native_terminal_requested = true end
+end
+dofile('src/nvim/tuim_init.lua')
+vim.cmd.enew()
+local source = vim.api.nvim_get_current_buf()
+_G.OpenAITerminal('codex')
+local codex, codex_buf = _G.GetActiveAIJob(), _G.last_ai_buf
+assert(codex and vim.b[codex_buf].tuim_ai)
+_G.OpenAITerminal('claude')
+local claude, claude_buf = _G.GetActiveAIJob(), _G.last_ai_buf
+assert(claude and claude ~= codex)
+assert(vim.fn.jobwait({codex}, 0)[1] == -1, 'Switching agents killed the previous job')
+_G.OpenAITerminal('codex')
+assert(_G.GetActiveAIJob() == codex and _G.last_ai_buf == codex_buf)
+assert(vim.api.nvim_get_current_buf() == codex_buf)
+vim.fn.jobstop(claude)
+assert(vim.wait(2000, function() return _G.tuim_ai_sessions.claude.job == nil end))
+assert(_G.GetActiveAIJob() == codex and _G.last_ai_command == 'codex')
+assert(events[#events][1] == 'claude' and events[#events][2] == 'stopped' and events[#events][3] == false)
+_G.OpenAITerminal('claude')
+assert(_G.GetActiveAIJob() ~= claude and _G.last_ai_buf ~= claude_buf)
+_G.CloseAITerminal()
+assert(_G.tuim_ai_sessions.claude == nil)
+assert(vim.api.nvim_get_current_buf() == source)
+assert(vim.fn.jobwait({codex}, 0)[1] == -1)
+_G.OpenAITerminal('codex')
+assert(_G.GetActiveAIJob() == codex)
+_G.RestartAITerminal()
+assert(vim.wait(2000, function() return _G.GetActiveAIJob() ~= nil and _G.GetActiveAIJob() ~= codex end))
+_G.CloseAITerminal()
+assert(next(_G.tuim_ai_sessions) == nil)
+local source_win = vim.api.nvim_get_current_win()
+local editor_buf = vim.api.nvim_get_current_buf()
+vim.api.nvim_buf_set_lines(editor_buf, 0, -1, false, {'unsaved editor text'})
+local count = #vim.api.nvim_list_wins()
+_G.OpenTerminalRight()
+assert(native_terminal_requested, 'Shell split was not handed to Tuim')
+assert(#vim.api.nvim_list_wins() == count)
+assert(vim.api.nvim_get_current_win() == source_win)
+assert(vim.api.nvim_get_current_buf() == editor_buf)
+assert(vim.bo[editor_buf].modified)
+assert(vim.api.nvim_buf_get_lines(editor_buf, 0, -1, false)[1] == 'unsaved editor text')
+
+-- Closing a terminal in the last window must leave a usable editor.
+vim.cmd.enew()
+vim.fn.termopen({ 'cat' })
+local terminal_buf, terminal_job = vim.api.nvim_get_current_buf(), vim.b.terminal_job_id
+assert(_G.tuim_close_buffer(terminal_buf))
+assert(#vim.api.nvim_list_wins() == 1 and vim.bo.buftype == '')
+assert(vim.wait(2000, function() return vim.fn.jobwait({terminal_job}, 0)[1] ~= -1 end))
+print('AI sessions passed: switching, background exit, reopening, restart, close, source focus')
+vim.cmd('qa!')

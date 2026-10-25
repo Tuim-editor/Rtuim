@@ -1,0 +1,55 @@
+name: CI
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm, macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked
+      - run: cargo build --locked --release
+      - name: Install Neovim
+        shell: bash
+        run: |
+          case "$(uname -s)/$(uname -m)" in
+            Linux/x86_64) asset=nvim-linux-x86_64 ;;
+            Linux/aarch64) asset=nvim-linux-arm64 ;;
+            Darwin/x86_64) asset=nvim-macos-x86_64 ;;
+            Darwin/arm64) asset=nvim-macos-arm64 ;;
+          esac
+          curl -fL --retry 3 -o "$RUNNER_TEMP/nvim.tar.gz" "https://github.com/neovim/neovim/releases/download/v0.12.4/$asset.tar.gz"
+          tar -xzf "$RUNNER_TEMP/nvim.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$asset/bin" >> "$GITHUB_PATH"
+      - name: Terminal and runtime smoke tests
+        env:
+          TUIM_TEST_BINARY: ${{ github.workspace }}/target/release/tuim
+        run: |
+          python3 tests/controlling_tty.py
+          python3 tests/pty_integration.py
+          python3 tests/default_runtime.py
+  documentation-and-packaging:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell scripts
+        run: shellcheck setup.sh update.sh uninstall.sh build_appimage.sh scripts/build_bundle.sh src/software_update.sh packaging/tuim-launcher scripts/capture_media.sh tests/setup_plans.sh tests/launcher_smoke.sh tests/appimage_smoke.sh tests/media_assets.sh tests/terminal_compat.sh
+      - name: Shell syntax and packaging
+        run: |
+          bash -n setup.sh update.sh uninstall.sh build_appimage.sh scripts/build_bundle.sh
+          bash tests/setup_plans.sh
+          python3 tests/setup_install.py
+          sh tests/launcher_smoke.sh
+      - name: Documentation and current screenshots
+        run: |
+          python3 tests/site.py
+          bash tests/media_assets.sh
+          python3 tests/performance_profile.py

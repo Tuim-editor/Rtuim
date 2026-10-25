@@ -1,0 +1,16 @@
+/target/
+/bin/tuim
+/dist/
+/Tuim.AppDir/
+/_site/
+tmp/
+.env
+.env.*
+*.AppImage
+*.AppImage.sha256
+*.log
+__pycache__/
+*.py[cod]
+node_modules/
+.agent/
+scripts/herdr-tuim.sh

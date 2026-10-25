@@ -1,0 +1,15 @@
+pub mod activity_bar;
+pub mod ai_panel;
+pub mod bug_report;
+pub mod editor_context_menu;
+pub mod explorer;
+pub mod extension_shop;
+pub mod git_detailed;
+pub mod git_panel;
+pub mod lazy;
+pub mod mason;
+pub mod menu_bar;
+pub mod orchestrator;
+pub mod primitives;
+pub mod search_panel;
+pub mod settings;

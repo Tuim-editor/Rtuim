@@ -1,0 +1,58 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            asset: tuim-linux-x86_64
+          - runner: ubuntu-22.04-arm
+            asset: tuim-linux-aarch64
+          - runner: macos-15-intel
+            asset: tuim-macos-x86_64
+          - runner: macos-15
+            asset: tuim-macos-aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked
+      - name: Build native Rust bundle
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: VERSION="${VERSION#v}" bash scripts/build_bundle.sh
+      - name: Build AppImage
+        if: matrix.asset == 'tuim-linux-x86_64'
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" OUTPUT_DIR="$PWD/dist" bash build_appimage.sh
+          bash tests/appimage_smoke.sh Tuim.AppDir
+          cp "dist/Tuim-${GITHUB_REF_NAME#v}-x86_64.AppImage" dist/Tuim-linux-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/*
+  publish:
+    needs: bundle
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: dist
+        run: find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          name: Rtuim ${{ github.ref_name }}
+          generate_release_notes: true

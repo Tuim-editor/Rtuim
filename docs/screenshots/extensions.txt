@@ -1,0 +1,38 @@
+ tuim / main            │  Cargo.toml ×                                                  File  Edit  View  Tools      F1 Commands
+ < Workspace [Esc]      │  1   [package]
+ SOURCE ╭─ Extensions ─────────────────────────────────────────────────────────────────────────────────────────────────────╮
+ Message│ / Search plugins by name or description                                                                          │
+ [Commit│──────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+        │ > 1 Installed           │ Your plugins                                                                           │ Neovim"
+ Changes│   2 Discover            │ 21 plugins  ·  Enter Details & Configure                                               │
+> Cargo.│   All Categories        │                                                                                        │
+        │   Colorschemes          │ > alpha-nvim                                                              [Installed]  │
+ b4e6ee9│   LSP & Completion      │   goolord/alpha-nvim  ·  Bundled | Enabled                                             │
+        │   Git Integrations      │                                                                                        │
+        │   AI & Assistants       │   blink.cmp                                                               [Installed]  │
+        │   Treesitter & Syntax   │   saghen/blink.cmp  ·  Bundled | Enabled | Required by: neovim/nvim-lspconfig          │
+        │   Telescope & Pickers   │                                                                                        │
+        │                         │   catppuccin                                                              [Installed]  │
+        │                         │   catppuccin/nvim  ·  Bundled | Enabled                                                │
+        │                         │                                                                                        │
+        │                         │   cyberdream.nvim                                                         [Installed]  │
+        │                         │   scottmckendry/cyberdream.nvim  ·  Bundled | Enabled                                  │
+        │                         │                                                                                        │
+        │                         │   friendly-snippets                                                       [Installed]  │
+        │                         │   rafamadriz/friendly-snippets  ·  Dependency | Enabled | Required by: saghen/blink.…  │
+        │                         │                                                                                        │
+        │                         │   gruvbox.nvim                                                            [Installed]  │
+        │                         │   ellisonleao/gruvbox.nvim  ·  Bundled | Enabled                                       │
+        │                         │                                                                                        │
+        │                         │   harpoon                                                                 [Installed]  │
+        │                         │   ThePrimeagen/harpoon  ·  Bundled | Enabled                                           │
+        │                         │                                                                                        │
+        │                         │   kanagawa.nvim                                                           [Installed]  │
+        │                         │   rebelot/kanagawa.nvim  ·  Bundled | Enabled                                          │
+        │                         │                                                                                        │
+        │                         │                                                                                        │
+        │──────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+        │ Tab Next pane   ↑↓ Navigate   Enter Open   Esc Close                                    [ Refresh ]  [ Close ]   │
+        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+                        │                                                                                         1,1           All
+ NORMAL  Cargo.toml  ·  Workspace                                                               F1 Commands         F11 Zen

@@ -1,0 +1,38 @@
+ tuim / main            │  Cargo.toml ×                                                  File  Edit  View  Tools      F1 Commands
+ < Workspace [Esc]      │  1   [package]
+ AI WORKSPACE           │    1 name = "tuim"
+ 1 Agents  2 Context  3 │ctionsversion = "0.4.0"
+ [ Open chat ]          │    3 edition = "2021"
+                        │    4 description = "Modern terminal workspace and IDE in Rust inspired by Fresh editor, powered by Neovim"
+ ○ Codex CLI            │    5 license = "MIT"
+ ○ Claude Code          │    6
+ × Gemini CLI           │ ╭─ Worktree & Agent Orchestrator ──────────────────────────────────────────────╮
+ × OpenCode             │ │                                                                              │
+ ○ Antigravity (agy)    │ │ n: New Worktree | a/Enter: Spawn AI Agent in Worktree | Esc: Close           │
+ × GitHub Copilot CLI   │ │                                                                              │
+                        │ │  [main]  /tmp/tuim-screenshots-zz_34jal/tuim  (b4e6ee9)                      │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │ │                                                                              │
+                        │~│                                                                              │
+                        │~╰──────────────────────────────────────────────────────────────────────────────╯
+                        │~
+                        │~
+                        │~
+                        │~
+                        │~
+ Session: none (Enter t │~
+ [f]ocus [r]estart [s]to│ [x]close                                                                                1,1           All
+ NORMAL  Cargo.toml  ·  Workspace                                                               F1 Commands         F11 Zen
