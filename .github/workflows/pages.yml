@@ -1,7 +1,14 @@
 name: Deploy GitHub Pages
 
 on:
-  # Enable GitHub Pages for Rtuim before manually publishing this site.
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - assets/**
+      - packaging/tuim.svg
+      - docs/screenshots/**
+      - .github/workflows/pages.yml
   workflow_dispatch:
 
 permissions:
@@ -24,12 +31,11 @@ jobs:
       - uses: actions/configure-pages@v5
       - name: Stage static site
         run: |
-          mkdir -p _site/assets _site/packaging _site/docs
+          mkdir -p _site/assets _site/packaging _site/docs/screenshots
           cp index.html _site/
           cp assets/site.css _site/assets/
           cp packaging/tuim.svg _site/packaging/
-          cp README.md _site/
-          cp -R docs/. _site/docs/
+          cp docs/screenshots/*.webp _site/docs/screenshots/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

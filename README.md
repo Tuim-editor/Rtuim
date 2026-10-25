@@ -11,7 +11,7 @@ Vim motions or familiar IDE shortcuts, run persistent shells, review Git
 changes, and open coding assistants without leaving the terminal.
 Its configuration and plugins are isolated from your regular Neovim setup.
 
-[Source](https://github.com/Tuim-editor/Rtuim) ·
+[Website](https://tuim-editor.github.io/Rtuim/) · [Source](https://github.com/Tuim-editor/Rtuim) ·
 [Usage guide](docs/usage.md) · [Troubleshooting](docs/troubleshooting.md) ·
 [Issues](https://github.com/Tuim-editor/Rtuim/issues)
 
