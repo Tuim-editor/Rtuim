@@ -1,6 +1,7 @@
 use std::process::Command;
 
 use rmpv::Value;
+use unicode_width::UnicodeWidthStr;
 
 use crate::nvim::rpc::RpcClient;
 use crate::tui::input::InputEvent;
@@ -48,6 +49,23 @@ pub const AI_ACTION_ITEMS: &[(&str, &str)] = &[
     ("Review Working Tree Changes", "_G.RunAIAction('review_changes')"),
     ("Implement Nearby TODO", "_G.RunAIAction('implement_todo')"),
 ];
+
+pub const AI_SESSION_ACTIONS: &[(&str, &str)] = &[
+    ("[f]ocus", "_G.FocusAITerminal()"),
+    ("[r]estart", "_G.RestartAITerminal()"),
+    ("[s]top", "_G.StopAITerminal()"),
+    ("[x]close", "_G.CloseAITerminal()"),
+];
+
+#[derive(Clone, Debug)]
+pub struct AiPanelLayout {
+    pub tab_rects: [(AiSection, &'static str, Rect); 3],
+    pub open_chat_row: u16,
+    pub list_start_y: u16,
+    pub list_max_rows: usize,
+    pub status_lines: Vec<(u16, String)>,
+    pub action_rects: Vec<(&'static str, &'static str, Rect)>,
+}
 
 pub struct AiPanel {
     pub section: AiSection,
@@ -217,6 +235,92 @@ impl AiPanel {
         }
     }
 
+    pub fn layout(&self, r: Rect) -> AiPanelLayout {
+        let inner_w = r.w.saturating_sub(2) as usize;
+        let max_x = r.x.saturating_add(r.w.saturating_sub(1));
+
+        let tabs = [
+            (AiSection::Agents, "1 Agents"),
+            (AiSection::Context, "2 Context"),
+            (AiSection::Actions, "3 Actions"),
+        ];
+        let mut cur_x = r.x.saturating_add(1);
+        let mut cur_y = r.y.saturating_add(1);
+        let mut tab_rects = [(AiSection::Agents, "", Rect::default()); 3];
+        for (i, (sec, label)) in tabs.into_iter().enumerate() {
+            let w = (label.width() as u16).min(r.w.saturating_sub(2));
+            if cur_x > r.x.saturating_add(1) && cur_x.saturating_add(w) > max_x {
+                cur_y = cur_y.saturating_add(1);
+                cur_x = r.x.saturating_add(1);
+            }
+            tab_rects[i] = (sec, label, Rect::new(cur_x, cur_y, w, 1));
+            cur_x = cur_x.saturating_add(w).saturating_add(2);
+        }
+
+        let open_chat_row = cur_y.saturating_add(1);
+        let list_start_y = open_chat_row.saturating_add(2);
+
+        let mut rel_actions: Vec<(&'static str, &'static str, u16, u16, u16)> =
+            Vec::with_capacity(AI_SESSION_ACTIONS.len());
+        let mut act_x = r.x.saturating_add(1);
+        let mut act_rel_y = 0u16;
+        for &(label, lua) in AI_SESSION_ACTIONS {
+            let w = (label.width() as u16).min(r.w.saturating_sub(2));
+            if act_x > r.x.saturating_add(1) && act_x.saturating_add(w) > max_x {
+                act_rel_y = act_rel_y.saturating_add(1);
+                act_x = r.x.saturating_add(1);
+            }
+            rel_actions.push((label, lua, act_x, act_rel_y, w));
+            act_x = act_x.saturating_add(w).saturating_add(1);
+        }
+        let action_rows = if rel_actions.is_empty() {
+            0
+        } else {
+            act_rel_y + 1
+        };
+
+        let status_text = if self.active_agent.is_empty() {
+            "Session: none (Enter to start)".to_string()
+        } else {
+            format!("Session: {} ({})", self.active_agent, self.status)
+        };
+        let wrapped_status = primitives::wrap_text(&status_text, inner_w);
+        let status_row_count = wrapped_status.len() as u16;
+        let footer_h = status_row_count.saturating_add(action_rows);
+        let bottom_y = r.y.saturating_add(r.h);
+
+        let (status_lines, action_rects, list_end_y) =
+            if inner_w > 0 && bottom_y >= list_start_y.saturating_add(footer_h) {
+                let footer_start_y = bottom_y.saturating_sub(footer_h);
+                let status_lines: Vec<(u16, String)> = wrapped_status
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, line)| (footer_start_y + idx as u16, line))
+                    .collect();
+                let actions_start_y = footer_start_y.saturating_add(status_row_count);
+                let action_rects: Vec<(&'static str, &'static str, Rect)> = rel_actions
+                    .into_iter()
+                    .map(|(label, lua, x, ry, w)| {
+                        (label, lua, Rect::new(x, actions_start_y + ry, w, 1))
+                    })
+                    .collect();
+                (status_lines, action_rects, footer_start_y)
+            } else {
+                (Vec::new(), Vec::new(), bottom_y)
+            };
+
+        let list_max_rows = list_end_y.saturating_sub(list_start_y) as usize;
+
+        AiPanelLayout {
+            tab_rects,
+            open_chat_row,
+            list_start_y,
+            list_max_rows,
+            status_lines,
+            action_rects,
+        }
+    }
+
     pub fn handle_mouse(
         &mut self,
         r: Rect,
@@ -226,35 +330,58 @@ impl AiPanel {
         pressed: bool,
         rpc: &mut RpcClient,
     ) -> bool {
-        if !r.contains(mx, my) || !pressed || button != 0 {
+        if !r.contains(mx, my) || !pressed {
             return false;
         }
-        let rel_y = my - r.y;
-        let rel_x = mx - r.x;
-
-        if rel_y == 1 {
-            let third = (r.w / 3).max(1);
-            if rel_x < third {
-                self.set_section(AiSection::Agents);
-            } else if rel_x < third * 2 {
-                self.set_section(AiSection::Context);
-            } else {
-                self.set_section(AiSection::Actions);
-            }
+        let len = self.current_section_len();
+        if button == 64 {
+            self.list_state.move_up(1);
             return true;
         }
+        if button == 65 {
+            self.list_state.move_down(len, 1);
+            return true;
+        }
+        if button != 0 {
+            return false;
+        }
 
-        if rel_y == 2 {
+        let layout = self.layout(r);
+        for (sec, _, tab_r) in layout.tab_rects {
+            let hit_r = Rect::new(tab_r.x.saturating_sub(1), tab_r.y, tab_r.w.saturating_add(2), 1);
+            if hit_r.contains(mx, my) {
+                self.set_section(sec);
+                return true;
+            }
+        }
+
+        if my == layout.open_chat_row {
             self.execute_selected(rpc);
             return true;
         }
 
-        if rel_y >= 4 {
-            let idx = (rel_y - 4) as usize;
-            if idx < self.current_section_len() {
-                self.list_state.selected = idx;
-                self.execute_selected(rpc);
+        for &(label, lua, act_r) in &layout.action_rects {
+            if act_r.contains(mx, my) {
+                let _ = rpc.notify(
+                    "nvim_exec_lua",
+                    vec![Value::from(lua), Value::Array(vec![])],
+                );
+                if label == "[f]ocus" {
+                    self.focus_editor_requested = true;
+                }
                 return true;
+            }
+        }
+
+        if my >= layout.list_start_y {
+            let rel_row = (my - layout.list_start_y) as usize;
+            if rel_row < layout.list_max_rows {
+                let idx = self.list_state.scroll_offset + rel_row;
+                if idx < len {
+                    self.list_state.selected = idx;
+                    self.execute_selected(rpc);
+                    return true;
+                }
             }
         }
         true
@@ -267,10 +394,11 @@ impl AiPanel {
         let c = chrome(theme);
         renderer.fill_rect(r, c.panel_bg);
 
+        let hdr = primitives::truncate_to_width("AI WORKSPACE", r.w.saturating_sub(2) as usize);
         renderer.draw_text_styled(
             r.x + 1,
             r.y,
-            "AI WORKSPACE",
+            &hdr,
             c.text_strong,
             c.panel_bg,
             true,
@@ -281,39 +409,47 @@ impl AiPanel {
             return;
         }
 
-        // Section tabs on row 1
-        let tabs = [
-            ("1 Agents", AiSection::Agents),
-            ("2 Context", AiSection::Context),
-            ("3 Actions", AiSection::Actions),
-        ];
-        let mut x_pos = r.x + 1;
-        for (label, sec) in tabs {
+        let layout = self.layout(r);
+
+        // Section tabs (flowed across rows so they never overflow r.w)
+        for (sec, label, tab_r) in layout.tab_rects {
+            if tab_r.y >= r.y + r.h {
+                break;
+            }
             let active = self.section == sec;
             let bg = if active { c.row_selected_bg } else { c.surface_bg };
             let fg = if active { c.text_strong } else { c.text_muted };
-            renderer.draw_text_styled(x_pos, r.y + 1, label, fg, bg, active, false);
-            x_pos += label.len() as u16 + 2;
+            let trunc = primitives::truncate_to_width(label, tab_r.w as usize);
+            renderer.draw_text_styled(tab_r.x, tab_r.y, &trunc, fg, bg, active, false);
         }
 
-        // Row 2: Open chat action button
-        renderer.draw_text_styled(
-            r.x + 1,
-            r.y + 2,
-            "[ Open chat ]",
-            c.accent,
-            c.surface_bg,
-            true,
-            false,
-        );
+        // Open chat action button
+        if layout.open_chat_row < r.y + r.h {
+            let btn_trunc =
+                primitives::truncate_to_width("[ Open chat ]", r.w.saturating_sub(2) as usize);
+            renderer.draw_text_styled(
+                r.x + 1,
+                layout.open_chat_row,
+                &btn_trunc,
+                c.accent,
+                c.surface_bg,
+                true,
+                false,
+            );
+        }
 
-        let start_y = r.y + 4;
-        let max_rows = r.h.saturating_sub(6) as usize;
+        let start_y = layout.list_start_y;
+        let max_rows = layout.list_max_rows;
+        self.list_state.adjust_scroll(max_rows);
 
         match self.section {
             AiSection::Agents => {
-                for (idx, agent) in self.agents.iter().take(max_rows).enumerate() {
-                    let ry = start_y + idx as u16;
+                for i in 0..max_rows {
+                    let idx = self.list_state.scroll_offset + i;
+                    let Some(agent) = self.agents.get(idx) else {
+                        break;
+                    };
+                    let ry = start_y + i as u16;
                     let selected = idx == self.list_state.selected;
                     let bg = if selected {
                         if focused {
@@ -344,8 +480,12 @@ impl AiPanel {
                 }
             }
             AiSection::Context => {
-                for (idx, (label, _)) in AI_CONTEXT_ITEMS.iter().take(max_rows).enumerate() {
-                    let ry = start_y + idx as u16;
+                for i in 0..max_rows {
+                    let idx = self.list_state.scroll_offset + i;
+                    let Some((label, _)) = AI_CONTEXT_ITEMS.get(idx) else {
+                        break;
+                    };
+                    let ry = start_y + i as u16;
                     let selected = idx == self.list_state.selected;
                     let bg = if selected {
                         if focused {
@@ -363,8 +503,12 @@ impl AiPanel {
                 }
             }
             AiSection::Actions => {
-                for (idx, (label, _)) in AI_ACTION_ITEMS.iter().take(max_rows).enumerate() {
-                    let ry = start_y + idx as u16;
+                for i in 0..max_rows {
+                    let idx = self.list_state.scroll_offset + i;
+                    let Some((label, _)) = AI_ACTION_ITEMS.get(idx) else {
+                        break;
+                    };
+                    let ry = start_y + i as u16;
                     let selected = idx == self.list_state.selected;
                     let bg = if selected {
                         if focused {
@@ -383,23 +527,12 @@ impl AiPanel {
             }
         }
 
-        if r.h >= 6 {
-            let status_y = r.y + r.h - 2;
-            let status_line = if self.active_agent.is_empty() {
-                "Session: none (Enter to start)".to_string()
-            } else {
-                format!("Session: {} ({})", self.active_agent, self.status)
-            };
-            let truncated =
-                primitives::truncate_to_width(&status_line, r.w.saturating_sub(2) as usize);
-            renderer.draw_text(r.x + 1, status_y, &truncated, c.text_muted, c.panel_bg);
-            renderer.draw_text(
-                r.x + 1,
-                status_y + 1,
-                "[f]ocus [r]estart [s]top [x]close",
-                c.text_muted,
-                c.panel_bg,
-            );
+        for (sy, line) in &layout.status_lines {
+            renderer.draw_text(r.x + 1, *sy, line, c.text_muted, c.panel_bg);
+        }
+        for (label, _, act_r) in &layout.action_rects {
+            let trunc = primitives::truncate_to_width(label, act_r.w as usize);
+            renderer.draw_text(act_r.x, act_r.y, &trunc, c.text_muted, c.panel_bg);
         }
     }
 }
@@ -407,5 +540,78 @@ impl AiPanel {
 impl Default for AiPanel {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row_text(renderer: &Renderer, y: u16, x_start: u16, x_end: u16) -> String {
+        let mut s = String::new();
+        for x in x_start..x_end.min(renderer.width) {
+            let cell = &renderer.buf[y as usize * renderer.width as usize + x as usize];
+            if !cell.continuation {
+                s.push_str(std::str::from_utf8(&cell.ch[..cell.len as usize]).unwrap_or(" "));
+            }
+        }
+        s
+    }
+
+    #[test]
+    fn ai_panel_wraps_without_overflow_at_default_and_narrow_widths() {
+        let mut panel = AiPanel::new();
+        let theme = Theme::default();
+
+        for width in [16u16, 20, 24, 36] {
+            let mut renderer = Renderer::new(80, 30);
+            let sentinel_bg = 0x123456;
+            renderer.fill_rect(Rect::new(0, 0, 80, 30), sentinel_bg);
+            let rect = Rect::new(0, 2, width, 26);
+            panel.draw(&mut renderer, rect, &theme, true);
+
+            // Nothing may spill past rect.w into the editor region (x >= width).
+            for y in 0..30u16 {
+                for x in width..80u16 {
+                    let cell = &renderer.buf[y as usize * 80 + x as usize];
+                    assert_eq!(
+                        cell.bg, sentinel_bg,
+                        "AI panel overflowed at width={} x={} y={}",
+                        width, x, y
+                    );
+                    assert_eq!(
+                        &cell.ch[..cell.len as usize],
+                        b" ",
+                        "AI panel text spilled past border at width={} x={} y={}",
+                        width,
+                        x,
+                        y
+                    );
+                }
+            }
+
+            let all_sidebar_text: String = (rect.y..rect.y + rect.h)
+                .map(|y| row_text(&renderer, y, 0, width))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(all_sidebar_text.contains("1 Agents"), "width={width}\n{all_sidebar_text}");
+            assert!(all_sidebar_text.contains("2 Context"), "width={width}\n{all_sidebar_text}");
+            assert!(all_sidebar_text.contains("3 Actions"), "width={width}\n{all_sidebar_text}");
+            assert!(all_sidebar_text.contains("[f]ocus"), "width={width}\n{all_sidebar_text}");
+            assert!(all_sidebar_text.contains("[r]estart"), "width={width}\n{all_sidebar_text}");
+            assert!(all_sidebar_text.contains("[s]top"), "width={width}\n{all_sidebar_text}");
+            assert!(all_sidebar_text.contains("[x]close"), "width={width}\n{all_sidebar_text}");
+        }
+
+        // At default width 24, "3 Actions" wraps onto the second tab row, while at 36 all 3 share one row.
+        let layout_24 = panel.layout(Rect::new(0, 2, 24, 26));
+        assert_eq!(layout_24.tab_rects[0].2.y, 3);
+        assert_eq!(layout_24.tab_rects[1].2.y, 3);
+        assert_eq!(layout_24.tab_rects[2].2.y, 4);
+
+        let layout_36 = panel.layout(Rect::new(0, 2, 36, 26));
+        assert_eq!(layout_36.tab_rects[0].2.y, 3);
+        assert_eq!(layout_36.tab_rects[1].2.y, 3);
+        assert_eq!(layout_36.tab_rects[2].2.y, 3);
     }
 }

@@ -510,10 +510,16 @@ impl FileExplorer {
         renderer.fill_rect(rect, c.panel_bg);
 
         // Header: EXPLORER  +F +D ↻
+        let hdr_max = if rect.w >= 16 {
+            rect.w.saturating_sub(10) as usize
+        } else {
+            rect.w.saturating_sub(2) as usize
+        };
+        let hdr = primitives::truncate_to_width("EXPLORER", hdr_max);
         renderer.draw_text_styled(
             rect.x + 1,
             rect.y,
-            "EXPLORER",
+            &hdr,
             c.text_muted,
             c.panel_bg,
             true,

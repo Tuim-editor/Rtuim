@@ -466,17 +466,22 @@ impl GitPanel {
         );
 
         // Action buttons on row 2
+        let commit_btn = primitives::truncate_to_width("[Commit]", r.w.saturating_sub(2) as usize);
         renderer.draw_text_styled(
             r.x + 1,
             r.y + 2,
-            "[Commit]",
+            &commit_btn,
             c.text_strong,
             c.surface_bg,
             false,
             false,
         );
-        renderer.draw_text(r.x + 10, r.y + 2, "[Stage All]", c.text, c.surface_bg);
-        if r.w >= 30 {
+        if r.w > 11 {
+            let stage_btn =
+                primitives::truncate_to_width("[Stage All]", r.w.saturating_sub(11) as usize);
+            renderer.draw_text(r.x + 10, r.y + 2, &stage_btn, c.text, c.surface_bg);
+        }
+        if r.w >= 31 {
             renderer.draw_text(r.x + 22, r.y + 2, "[ More ]", c.accent, c.surface_bg);
         }
 
@@ -484,7 +489,10 @@ impl GitPanel {
         let max_y = r.y + r.h.saturating_sub(3);
 
         if !self.staged.is_empty() && cy < max_y {
-            let hdr = format!("Staged Changes ({})", self.staged.len());
+            let hdr = primitives::truncate_to_width(
+                &format!("Staged Changes ({})", self.staged.len()),
+                r.w.saturating_sub(2) as usize,
+            );
             renderer.draw_text_styled(r.x + 1, cy, &hdr, c.text_muted, c.panel_bg, true, false);
             cy += 1;
             for (idx, f) in self.staged.iter().enumerate() {
@@ -513,7 +521,10 @@ impl GitPanel {
         }
 
         if cy < max_y {
-            let hdr = format!("Changes ({})", self.unstaged.len());
+            let hdr = primitives::truncate_to_width(
+                &format!("Changes ({})", self.unstaged.len()),
+                r.w.saturating_sub(2) as usize,
+            );
             renderer.draw_text_styled(r.x + 1, cy, &hdr, c.text_muted, c.panel_bg, true, false);
             cy += 1;
             for (u_idx, f) in self.unstaged.iter().enumerate() {

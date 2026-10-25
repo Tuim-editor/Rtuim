@@ -347,15 +347,36 @@ pub fn sidebar_hover_rect(app: &App, layout: &Layout, x: u16, y: u16) -> Option<
             None
         }
         2 => {
-            if rel_y == 1 {
-                let third = (sb.w / 3).max(1);
-                let section = (rel_x / third).min(2);
-                let left = section * third;
-                let width = if section == 2 { sb.w - left } else { third };
-                return Some(Rect::new(sb.x + left, y, width, 1));
+            let ai_layout = app.ai_panel.layout(sb);
+            for (_, _, tab_r) in ai_layout.tab_rects {
+                let hit_r = Rect::new(
+                    tab_r.x.saturating_sub(1),
+                    tab_r.y,
+                    tab_r.w.saturating_add(1).min((sb.x + sb.w).saturating_sub(tab_r.x.saturating_sub(1))),
+                    1,
+                );
+                if hit_r.contains(x, y) {
+                    return Some(tab_r);
+                }
             }
-            (rel_y == 2 || (rel_y >= 4 && (rel_y - 4) < app.ai_panel.current_section_len() as u16))
-                .then_some(row)
+            if y == ai_layout.open_chat_row {
+                return Some(row);
+            }
+            for &(_, _, act_r) in &ai_layout.action_rects {
+                if act_r.contains(x, y) {
+                    return Some(act_r);
+                }
+            }
+            if y >= ai_layout.list_start_y {
+                let rel_row = (y - ai_layout.list_start_y) as usize;
+                if rel_row < ai_layout.list_max_rows
+                    && app.ai_panel.list_state.scroll_offset + rel_row
+                        < app.ai_panel.current_section_len()
+                {
+                    return Some(row);
+                }
+            }
+            None
         }
         4 => (rel_y == 1 || (rel_y >= 3 && app.search_panel.list_state.scroll_offset
             + ((rel_y - 3) as usize) < app.search_panel.hits.len())).then_some(row),

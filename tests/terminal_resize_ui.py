@@ -100,6 +100,22 @@ with tempfile.TemporaryDirectory(prefix='tuim-resize-') as directory:
             assert (rows, cols) == (height - header_y - 2, width - panel_x), ((rows, cols), grid)
             terminal_lines = grid.splitlines()[header_y + 1:-1]
             assert not any(line.rstrip().endswith('All') for line in terminal_lines), grid
+
+        # Drag the top part of the bottom panel (both header empty area and [Terminal] tab) to resize it.
+        grid = screen()
+        header_y, header = next((i, line) for i, line in enumerate(grid.splitlines()) if '[Debug console]' in line)
+        drag_x = header.index('[Terminal]') + 2
+        target_y = header_y - 5
+        tmux('send-keys', '-l', '-t', 'ui',
+             f'\x1b[<0;{drag_x + 1};{header_y + 1}M\x1b[<32;{drag_x + 1};{target_y + 1}M\x1b[<0;{drag_x + 1};{target_y + 1}m')
+        wait_for(lambda s: next(i for i, line in enumerate(s.splitlines()) if '[Debug console]' in line) == target_y)
+        dragged_marker = base / 'size-dragged-up'
+        tmux('send-keys', '-l', '-t', 'ui', 'stty size > ' + shlex.quote(str(dragged_marker)))
+        tmux('send-keys', '-t', 'ui', 'Enter')
+        wait_for(lambda _: dragged_marker.exists() and bool(dragged_marker.read_text().strip()))
+        rows, cols = map(int, dragged_marker.read_text().split())
+        assert rows == 36 - target_y - 2, ((rows, cols), screen())
+
         pathlib.Path('/tmp/tuim-terminal-redesign.txt').write_text(screen())
         tmux('send-keys', '-t', 'ui', 'C-q')
     finally:
