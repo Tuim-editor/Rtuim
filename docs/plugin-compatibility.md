@@ -5,6 +5,29 @@ Plugins execute inside Tuim's isolated editor process and render through
 Neovim's linegrid UI protocol (`ext_linegrid`). This boundary matters more than whether a
 plugin is written in Lua or Vimscript.
 
+## Trust and security
+
+Searching reads a third-party JSON catalog; it does not execute plugin code.
+Catalog downloads and cached files are size-limited and validated. Invalid
+repository identities and malformed entries are rejected, and display text
+cannot emit terminal control sequences. Search strings are passed as process
+arguments, never evaluated as shell commands.
+
+Installing, reinstalling, or re-enabling an extension requires a trust prompt
+showing its full GitHub repository URL. Press **Y** or click **Trust** to accept;
+Enter does not accept this prompt. Escape or Cancel leaves plugin state unchanged.
+Small terminals must be enlarged so the complete warning can be shown.
+Changes apply after restart; installing through Extensions does not run a
+global plugin update. Updates remain available through the Plugin Manager.
+
+**Plugins are executable code, not sandboxed extensions.** Plugin code,
+dependencies, configuration, and install/update hooks can access files,
+processes, and the network with your user permissions. The separate Tuim
+configuration is not a security boundary. Catalog listings and star counts do
+not mean code has been audited. HTTPS protects transport, but this catalog
+does not have independent signature verification. Only install and update
+repositories and dependencies you trust.
+
 ## Plugin ownership
 
 - Bundled plugins are declared in `src/nvim/tuim_init.lua`, installed under

@@ -7,6 +7,8 @@ import re
 import sys
 import tempfile
 import time
+import unicodedata
+import urllib.parse
 import urllib.request
 
 TUIM_DIR = pathlib.Path(os.environ.get("XDG_DATA_HOME", pathlib.Path.home() / ".local/share")) / "tuim"
@@ -14,6 +16,74 @@ DB_PATH = TUIM_DIR / "store_db.json"
 USER_PLUGINS_PATH = TUIM_DIR / "user_plugins.json"
 STATE_PATH = TUIM_DIR / "plugin_states.json"
 INVENTORY_PATH = TUIM_DIR / "plugin_inventory.json"
+MAX_CATALOG_BYTES = 16 * 1024 * 1024
+MAX_CATALOG_ITEMS = 50_000
+MAX_QUERY_CHARS = 256
+
+
+def valid_repo(repo):
+    if not isinstance(repo, str) or repo.count("/") != 1:
+        return False
+    owner, name = repo.split("/")
+    return (1 <= len(owner) <= 39 and owner[0].isalnum() and owner[-1].isalnum()
+            and re.fullmatch(r"[A-Za-z0-9-]+", owner) is not None
+            and re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", name) is not None
+            and name not in (".", ".."))
+
+
+def display_text(value, limit):
+    if not isinstance(value, str) or len(value) > limit:
+        raise ValueError("Invalid catalog text")
+    return "".join(" " if unicodedata.category(ch) in ("Cc", "Cf", "Cs") else ch for ch in value)
+
+
+def validate_catalog(data):
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        raise ValueError("Invalid marketplace catalog")
+    if len(data["items"]) > MAX_CATALOG_ITEMS:
+        raise ValueError("Marketplace catalog has too many entries")
+    items, seen = [], set()
+    for entry in data["items"]:
+        if not isinstance(entry, dict) or not valid_repo(entry.get("full_name")):
+            continue
+        repo = entry["full_name"]
+        if repo.lower() in seen:
+            continue
+        try:
+            description = entry.get("description")
+            description = display_text("" if description is None else description, 4096)
+            tags = entry.get("tags", [])
+            stars = entry.get("stars", {})
+            if not isinstance(tags, list) or len(tags) > 64 or not isinstance(stars, dict):
+                continue
+            tags = [display_text(tag, 64) for tag in tags]
+            stars = stars.get("curr", 0)
+            if type(stars) is not int or not 0 <= stars <= 1_000_000_000:
+                continue
+        except ValueError:
+            continue
+        # Derive the display name from the validated identity. Ignore remote
+        # URLs, code, installed flags and other untrusted catalog fields.
+        items.append(dict(name=repo.split("/")[1], full_name=repo,
+                          description=description, tags=tags, stars={"curr": stars}))
+        seen.add(repo.lower())
+    if data["items"] and not items:
+        raise ValueError("Marketplace catalog has no valid entries")
+    return {"items": items}
+
+
+def load_catalog(stream):
+    raw = stream.read(MAX_CATALOG_BYTES + 1)
+    if len(raw) > MAX_CATALOG_BYTES:
+        raise ValueError("Marketplace catalog exceeds the size limit")
+    return validate_catalog(json.loads(raw))
+
+
+class HTTPSRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urllib.parse.urlsplit(newurl).scheme != "https":
+            raise ValueError("Catalog redirects must use HTTPS")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def read_json(path, default):
@@ -43,10 +113,13 @@ def download_db():
     url = "https://github.com/alex-popov-tech/store.nvim.crawler/releases/latest/download/db_minified.json"
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "Tuim"})
-        with urllib.request.urlopen(request, timeout=10) as response:
-            data = json.load(response)
-        if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-            raise ValueError("Invalid marketplace catalog")
+        opener = urllib.request.build_opener(HTTPSRedirectHandler())
+        with opener.open(request, timeout=10) as response:
+            data = load_catalog(response)
+        # Normalization/JSON escaping must not create a cache that exceeds the
+        # same limit enforced when it is read on subsequent searches.
+        if len((json.dumps(data, indent=2) + "\n").encode("utf-8")) > MAX_CATALOG_BYTES:
+            raise ValueError("Normalized marketplace catalog exceeds the size limit")
         write_json(DB_PATH, data)
         return True
     except Exception as error:
@@ -90,6 +163,8 @@ def inventory():
 
 
 def search(query, category="all"):
+    if not isinstance(query, str) or len(query) > MAX_QUERY_CHARS:
+        raise ValueError("Search query is too long")
     installed = inventory()
     if category == "installed":
         # No catalog or network required, and no 50-item cap.
@@ -98,7 +173,11 @@ def search(query, category="all"):
     else:
         if not DB_PATH.exists() or time.time() - DB_PATH.stat().st_mtime > 86400:
             download_db()  # A stale cache remains usable offline.
-        items = read_json(DB_PATH, {"items": []}).get("items", [])
+        if DB_PATH.exists():
+            with DB_PATH.open("rb") as stream:
+                items = load_catalog(stream)["items"]
+        else:
+            items = []
         tags = {"colorscheme": ["colorscheme", "theme", "color-scheme"], "ai": ["ai", "llm"],
                 "treesitter": ["treesitter", "tree-sitter"], "telescope": ["telescope", "telescope-extension"]}
         if category != "all":
@@ -117,7 +196,7 @@ def search(query, category="all"):
 
 
 def change_plugin(action, repo):
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo) or any(part in (".", "..") for part in repo.split("/")):
+    if not valid_repo(repo):
         raise ValueError("Only repository plugins can be managed here")
     if repo == "folke/lazy.nvim":
         raise ValueError("Tuim needs its plugin manager")

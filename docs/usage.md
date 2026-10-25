@@ -217,8 +217,13 @@ this same panel.
 | Edit configuration | `e` |
 | Enable / disable | `d` |
 | Uninstall | `u` (or `x`), then `y` to confirm or `n` to cancel |
-| Install / reinstall | `Enter` (or `i`) |
+| Install / reinstall | `Enter` (or `i`), then `y` in the trust prompt |
 | Return to list (compact), or return to editor | `Escape` (or `q`) |
+
+Install, reinstall, and re-enable actions show the exact repository and require
+**Y** or a click on **Trust** before saving changes. Enter does not accept the
+trust prompt; Escape cancels. Plugins and their dependencies run with your user
+permissions and are not sandboxed. See [plugin security](plugin-compatibility.md#trust-and-security).
 
 Restart Tuim to apply installation, activation, and removal changes. Disabled
 plugins remain on disk. Uninstall removes only the selected plugin on the next

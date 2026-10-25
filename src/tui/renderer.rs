@@ -11,6 +11,40 @@ mod contrast_tests {
     use crate::tui::theme::contrast_ratio_u32;
 
     #[test]
+    fn untrusted_text_cannot_emit_terminal_protocol() {
+        let mut renderer = Renderer::new(120, 3);
+        let malicious = "plain\x1b]52;c;AAAA\x07\x1b[31mred\r\n\t\u{009b}2J\u{202e}spoof";
+        renderer.draw_text(0, 0, malicious, 0xffffff, 0);
+        renderer.put_cell(0, 1, "a\x1b]52;\x07", 0xffffff, 0, false, false, false);
+        for cell in &renderer.buf {
+            let text = std::str::from_utf8(&cell.ch[..cell.len as usize]).unwrap();
+            assert!(!text.chars().any(unsafe_display_char));
+        }
+        let mut output = Vec::new();
+        renderer.flush(&mut output).unwrap();
+        assert!(!output.windows(4).any(|w| w == b"\x1b]52"));
+        assert!(!output.windows(5).any(|w| w == b"\x1b[31m"));
+        assert!(!output.contains(&7));
+    }
+
+    #[test]
+    fn safe_unicode_is_preserved_without_partial_utf8() {
+        let mut cell = Cell::default();
+        for text in ["e\u{301}", "界", "👩\u{200d}💻"] {
+            cell.set_char(text);
+            assert_eq!(std::str::from_utf8(&cell.ch[..cell.len as usize]).unwrap(), text);
+        }
+        cell.set_char("abcdefghijk界");
+        assert_eq!(std::str::from_utf8(&cell.ch[..cell.len as usize]).unwrap(), "abcdefghijk");
+        cell.append_text("\x1b\u{202e}é");
+        assert_eq!(cell.len, 11);
+        let mut renderer = Renderer::new(10, 1);
+        renderer.draw_text(0, 0, "e\u{301}界", 0xffffff, 0);
+        assert_eq!(&renderer.buf[0].ch[..renderer.buf[0].len as usize], "e\u{301}".as_bytes());
+        assert!(renderer.buf[2].continuation);
+    }
+
+    #[test]
     fn native_labels_remain_readable_on_light_and_dark_selections() {
         let mut renderer = Renderer::new(40, 1);
         for background in [0x88aadd, 0xfabd2f, 0xffffff, 0x094771, 0x202020] {
@@ -60,26 +94,32 @@ impl Default for Cell {
 
 impl Cell {
     pub fn set_char(&mut self, slice: &str) {
-        let bytes = slice.as_bytes();
-        let copy_len = bytes.len().min(self.ch.len());
         self.ch = [0u8; 12];
-        if copy_len == 0 {
+        self.len = 0;
+        self.append_text(slice);
+        if self.len == 0 {
             self.ch[0] = b' ';
             self.len = 1;
-        } else {
-            self.ch[..copy_len].copy_from_slice(&bytes[..copy_len]);
-            self.len = copy_len as u8;
         }
         self.continuation = false;
     }
 
-    pub fn append_bytes(&mut self, slice: &[u8]) {
-        let cur = self.len as usize;
-        let available = self.ch.len().saturating_sub(cur);
-        let copy_len = slice.len().min(available);
-        self.ch[cur..cur + copy_len].copy_from_slice(&slice[..copy_len]);
-        self.len = (cur + copy_len) as u8;
+    fn append_text(&mut self, text: &str) {
+        for ch in text.chars().filter(|ch| !unsafe_display_char(*ch)) {
+            let start = self.len as usize;
+            let end = start + ch.len_utf8();
+            if end > self.ch.len() { break; }
+            ch.encode_utf8(&mut self.ch[start..end]);
+            self.len = end as u8;
+        }
     }
+}
+
+// Text is data, never terminal protocol. Keep combining marks/ZWJ, but exclude
+// C0/C1 controls and bidi overrides that can spoof repository identities.
+pub fn unsafe_display_char(ch: char) -> bool {
+    ch.is_control() || matches!(ch, '\u{061c}' | '\u{200e}' | '\u{200f}'
+        | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
 }
 
 pub fn unicode_cell_width(cp: char) -> u16 {
@@ -207,6 +247,7 @@ impl Renderer {
         let mut col = x;
         let mut char_indices = text.char_indices().peekable();
         while let Some((byte_idx, cp)) = char_indices.next() {
+            if unsafe_display_char(cp) { continue; }
             let next_byte = char_indices
                 .peek()
                 .map(|(idx, _)| *idx)
@@ -222,7 +263,7 @@ impl Renderer {
                         } else {
                             col - 1
                         };
-                    self.buf[row_start + (prev_col as usize)].append_bytes(slice.as_bytes());
+                    self.buf[row_start + (prev_col as usize)].append_text(slice);
                 }
                 continue;
             }
