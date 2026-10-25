@@ -36,6 +36,7 @@ jobs:
           python3 tests/controlling_tty.py
           python3 tests/pty_integration.py
           python3 tests/default_runtime.py
+          python3 tests/plugin_manager.py
   documentation-and-packaging:
     runs-on: ubuntu-22.04
     steps:

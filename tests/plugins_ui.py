@@ -102,6 +102,9 @@ def run():
             tmux("resize-window", "-t", "ui", "-x", "110", "-y", "36")
             send("Enter")
             click("D  Enable plugin")
+            wait("Trust this plugin?")
+            assert states()["example/alpha-demo"] == "disabled"
+            click("[Y] Trust")
             wait("Restart Tuim?")
             assert states()["example/alpha-demo"] == "enabled"
             send("Escape")
@@ -142,6 +145,9 @@ def run():
             wait("Removal pending restart")
             wait("Enter  Install plugin")
             send("Enter")
+            wait("Trust this plugin?")
+            assert states()["example/alpha-demo"] == "removed"
+            send("y")
             wait("Restart Tuim?")
             assert states()["example/alpha-demo"] == "enabled"
             send("Escape")
@@ -155,6 +161,31 @@ def run():
             click("Git Integrations")
             wait("demo-git")
             assert "demo-theme" not in screen()
+            send("Right")
+            send("Enter")
+            wait("Enter  Install plugin")
+            send("Enter")
+            prompt = wait("Trust this plugin?")
+            assert "https://github.com/example/demo-git" in prompt
+            assert "No sandbox or security review" in prompt
+            assert "example/demo-git" not in states()
+            send("Enter")
+            assert "Trust this plugin?" in screen()
+            assert "example/demo-git" not in states()
+            send("Escape")
+            send("i")
+            wait("Trust this plugin?")
+            tmux("resize-window", "-t", "ui", "-x", "40", "-y", "20")
+            wait("Enlarge to confirm")
+            send("y")
+            assert "example/demo-git" not in states()
+            tmux("resize-window", "-t", "ui", "-x", "110", "-y", "36")
+            wait("Trust this plugin?")
+            click("[Y] Trust")
+            wait("Restart Tuim?")
+            assert states()["example/demo-git"] == "enabled"
+            send("Escape")
+            send("Escape")
             send("1")
             wait("alpha-demo")
             send("/")
@@ -174,7 +205,7 @@ def run():
             send("C-q")
         finally:
             subprocess.run(["tmux", "-S", socket, "kill-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print("Installed plugins UI passed: keyboard, mouse, config, disable/enable, uninstall confirmation, reinstall, Settings, resize")
+    print("Installed plugins UI passed: explicit install/enable trust, cancel, repeated Enter, compact refusal, mouse, config, uninstall, reinstall, Settings")
 
 
 if __name__ == "__main__":

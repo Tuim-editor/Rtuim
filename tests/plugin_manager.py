@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline lifecycle tests using isolated data and real Neovim startup."""
 import importlib.util
+import io
 import json
 import os
 import pathlib
@@ -94,6 +95,77 @@ class PluginManagerTests(unittest.TestCase):
         os.utime(store.DB_PATH, (1, 1))
         with patch.object(store, "download_db", return_value=False):
             self.assertEqual(store.search("demo")[0]["name"], "demo")
+
+    def test_catalog_sanitizes_text_and_ignores_remote_privileges(self):
+        store.write_json(store.DB_PATH, {"items": [dict(
+            name="Trusted plugin manager", full_name="example/demo", description="x\x1b]52;c;AAAA\x07\u202espoof",
+            url="file:///tmp/evil", installed=True, protected=True, stars={"curr": 2}, tags=["git"])]})
+        result = store.search("demo")[0]
+        self.assertEqual(result["name"], "demo")
+        self.assertEqual(result["full_name"], "example/demo")
+        self.assertFalse(result["installed"])
+        self.assertFalse(result["protected"])
+        for ch in ("\x1b", "\x07", "\u202e"):
+            self.assertNotIn(ch, result["description"])
+        self.assertEqual(store.search("$(touch marker); 'quoted'"), [])
+
+    def test_catalog_rejects_malformed_entries_and_repository_injection(self):
+        valid = {"full_name": "owner/demo", "stars": {"curr": 5}}
+        bad_repos = ["../demo", "owner/..", "owner/a/b", "owner/demo\nerror()", "owner/\";error()",
+                     "https://github.com/owner/demo", "owñer/demo", "-owner/demo", "owner/" + "x" * 101]
+        invalid = [{"full_name": repo} for repo in bad_repos]
+        invalid += [None, "string", {**valid, "tags": [1]}, {**valid, "stars": {"curr": True}},
+                    {**valid, "stars": {"curr": -1}}, {**valid, "description": "x" * 4097},
+                    {**valid, "tags": ["x"] * 65}, {**valid, "description": {"code": "bad"}},
+                    {**valid, "description": False}]
+        data = store.validate_catalog({"items": invalid + [valid]})
+        self.assertEqual([item["full_name"] for item in data["items"]], ["owner/demo"])
+        for repo in bad_repos:
+            with self.subTest(repo=repo), self.assertRaises(ValueError):
+                store.change_plugin("add", repo)
+        self.assertFalse(store.USER_PLUGINS_PATH.exists())
+        self.assertFalse(store.STATE_PATH.exists())
+
+    def test_bounded_catalog_download_preserves_cache_on_failure(self):
+        old = {"items": [{"full_name": "owner/old"}]}
+        store.write_json(store.DB_PATH, old)
+        before = store.DB_PATH.read_bytes()
+        class Response(io.BytesIO):
+            def read(self, size=-1):
+                assert 0 < size <= store.MAX_CATALOG_BYTES + 1
+                return super().read(size)
+        for raw in (b"x" * 129, b"not json", b'{"items":{}}'):
+            opener = unittest.mock.Mock()
+            opener.open.return_value = Response(raw)
+            with patch.object(store, "MAX_CATALOG_BYTES", 128), patch.object(store.urllib.request, "build_opener", return_value=opener):
+                self.assertFalse(store.download_db())
+            self.assertEqual(store.DB_PATH.read_bytes(), before)
+        raw = json.dumps({"items": [{"full_name": "owner/new", "readme": "ignored code"}]}).encode()
+        opener = unittest.mock.Mock()
+        opener.open.return_value = Response(raw)
+        with patch.object(store.urllib.request, "build_opener", return_value=opener):
+            self.assertTrue(store.download_db())
+        self.assertNotIn("readme", store.read_json(store.DB_PATH, {})["items"][0])
+        before = store.DB_PATH.read_bytes()
+        # A small compact download can expand past the cache cap when formatted.
+        opener.open.return_value = Response(b'{"items":[{"full_name":"a/b"}]}')
+        with patch.object(store, "MAX_CATALOG_BYTES", 64), patch.object(store.urllib.request, "build_opener", return_value=opener):
+            self.assertFalse(store.download_db())
+        self.assertEqual(store.DB_PATH.read_bytes(), before)
+
+    def test_cache_and_query_limits_and_https_redirects(self):
+        store.TUIM_DIR.mkdir(parents=True)
+        store.DB_PATH.write_bytes(b" " * 129)
+        with patch.object(store, "MAX_CATALOG_BYTES", 128), self.assertRaisesRegex(ValueError, "size limit"):
+            store.search("")
+        with patch.object(store, "MAX_CATALOG_ITEMS", 1), self.assertRaisesRegex(ValueError, "too many"):
+            store.validate_catalog({"items": [{"full_name": "a/b"}, {"full_name": "c/d"}]})
+        with self.assertRaisesRegex(ValueError, "query"):
+            store.search("a" * 257)
+        request = store.urllib.request.Request("https://github.com/example")
+        for url in ("http://example.com/catalog", "file:///tmp/catalog", "ftp://example.com/catalog"):
+            with self.subTest(url=url), self.assertRaisesRegex(ValueError, "HTTPS"):
+                store.HTTPSRedirectHandler().redirect_request(request, None, 302, "Found", {}, url)
 
     def test_startup_overrides_and_persistent_state(self):
         store.write_json(store.USER_PLUGINS_PATH, ["owner/demo", "owner/broken"])

@@ -141,7 +141,7 @@ In **IDE Mode**, Tuim provides modeless editing:
 | **Edit Configuration** | `e` (creates/opens config in `~/.local/share/tuim/plugin_configs/`) |
 | **Enable / Disable Plugin** | `d` |
 | **Uninstall Plugin** | `u` or `x` (prompts `y`/`n` confirmation) |
-| **Install Plugin** | `Enter` or `i` |
+| **Install Plugin** | `Enter` or `i`, then `y` to trust the displayed repository |
 | **Close Shop** | `Esc` or `q` |
 
 ### AI Assistants Panel
