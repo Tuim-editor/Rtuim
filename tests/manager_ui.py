@@ -139,6 +139,23 @@ def run(capture=None):
             assert "PASTE-MUST-STAY-IN-DIALOG" not in grid, "Modal paste leaked into the editor"
             command("settings")
             wait(lambda s: "Settings [User]" in s and "System Clipboard" in s, "Settings did not open")
+            # Replace the extracted updater with a local fixture; never download or install in tests.
+            updater = data / "software_update.sh"
+            updater.write_text('printf "35" > "$3"\nsleep 1\nprintf "success" > "$1"\n')
+            click("About")
+            click("Update Tuim")
+            wait(lambda s: "Updating Tuim" in s and "35%" in s, "Update progress did not render")
+            click("Update Tuim")
+            wait(lambda s: "Update complete. Restart Tuim" in s, "Update completion did not render")
+            # Keyboard search and Enter must activate the same update control.
+            updater.write_text('printf "fixture failure" > "$2"\nprintf "failure" > "$1"\n')
+            send("/")
+            text("Update Tuim")
+            send("Enter", "Enter")
+            wait(lambda s: "Update failed. Log:" in s, "Keyboard update failure did not render")
+            send("Escape")
+            command("settings")
+            wait(lambda s: "System Clipboard" in s, "Settings did not reopen")
             hover_padding("System Clipboard")
             hover_padding("Mode:")
             # Escape and a mouse report can arrive together while moving the pointer.
