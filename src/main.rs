@@ -386,7 +386,9 @@ fn main() {
                 || app.editor_rpc.has_pending_work()
             {
                 0
-            } else if app.notice.is_some() || app.bug_report.is_open {
+            } else if app.notice.is_some() || app.bug_report.is_open
+                || app.settings_widget.software_update_running()
+            {
                 100
             } else {
                 -1

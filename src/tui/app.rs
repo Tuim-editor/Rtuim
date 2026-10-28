@@ -320,6 +320,9 @@ impl App {
         if self.bug_report.poll_submission() {
             changed = true;
         }
+        if self.settings_widget.poll_software_update() {
+            changed = true;
+        }
         if let Some(n) = &self.notice {
             if Self::now_ms() >= n.expires_at_ms {
                 self.notice = None;

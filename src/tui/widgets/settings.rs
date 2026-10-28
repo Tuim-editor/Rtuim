@@ -1,6 +1,8 @@
 use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
@@ -489,6 +491,12 @@ pub const KEYBINDING_ROWS: &[(&str, &str)] = &[
     ("Report Bug", "report_bug"),
 ];
 
+struct SoftwareUpdate {
+    child: Child,
+    directory: PathBuf,
+    progress: u8,
+}
+
 pub struct SettingsWidget {
     pub is_open: bool,
     pub active_tab: usize,
@@ -507,6 +515,8 @@ pub struct SettingsWidget {
     pub open_mason_requested: bool,
     pub open_lazy_requested: bool,
     pub open_shop_requested: bool,
+    software_update: Option<SoftwareUpdate>,
+    update_message: String,
 }
 
 impl SettingsWidget {
@@ -529,6 +539,8 @@ impl SettingsWidget {
             open_mason_requested: false,
             open_lazy_requested: false,
             open_shop_requested: false,
+            software_update: None,
+            update_message: String::new(),
         }
     }
 
@@ -538,6 +550,77 @@ impl SettingsWidget {
 
     pub fn is_dirty(&self) -> bool {
         self.config != self.saved_config
+    }
+
+    fn start_software_update(&mut self) {
+        if self.software_update.is_some() {
+            return;
+        }
+        let data_dir = PathBuf::from(&self.settings_path)
+            .parent().unwrap_or_else(|| std::path::Path::new(".")).to_path_buf();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+        let directory = data_dir.join(format!("software-update-{}-{nonce}", std::process::id()));
+        let start = || -> std::io::Result<Child> {
+            fs::DirBuilder::new().mode(0o700).create(&directory)?;
+            let log = fs::File::create(directory.join("log"))?;
+            Command::new("sh")
+                .arg(data_dir.join("software_update.sh"))
+                .arg(directory.join("status"))
+                .arg(directory.join("log"))
+                .arg(directory.join("progress"))
+                .stdin(Stdio::null())
+                .stdout(log.try_clone()?)
+                .stderr(log)
+                .spawn()
+        };
+        match start() {
+            Ok(child) => {
+                self.software_update = Some(SoftwareUpdate { child, directory, progress: 0 });
+                self.update_message = "Updating Tuim… 0%".into();
+            }
+            Err(error) => {
+                self.update_message = format!("Could not start update: {error}");
+            }
+        }
+    }
+
+    pub fn software_update_running(&self) -> bool {
+        self.software_update.is_some()
+    }
+
+    pub fn poll_software_update(&mut self) -> bool {
+        let Some(update) = self.software_update.as_mut() else { return false };
+        let progress = fs::read_to_string(update.directory.join("progress"))
+            .ok().and_then(|value| value.trim().parse::<u8>().ok())
+            .unwrap_or(update.progress).min(100);
+        let changed = progress != update.progress;
+        if changed {
+            update.progress = progress;
+            self.update_message = format!("Updating Tuim… {progress}%");
+        }
+        match update.child.try_wait() {
+            Ok(None) => changed,
+            Ok(Some(exit)) => {
+                let success = exit.success() && fs::read_to_string(update.directory.join("status"))
+                    .map(|status| status.trim() == "success").unwrap_or(false);
+                if success {
+                    self.update_message = "Update complete. Restart Tuim to use the new version.".into();
+                    let _ = fs::remove_dir_all(&update.directory);
+                } else {
+                    self.update_message = format!("Update failed. Log: {}", update.directory.join("log").display());
+                }
+                self.software_update = None;
+                true
+            }
+            Err(error) => {
+                let message = format!("Could not check update: {error}");
+                let changed = changed || self.update_message != message;
+                self.update_message = message;
+                // Keep the child tracked so a later poll can reap it.
+                changed
+            }
+        }
     }
 
     pub fn save_and_sync(&mut self, rpc: &mut RpcClient) {
@@ -863,6 +946,7 @@ impl SettingsWidget {
                 self.recording_key = true;
                 self.status_msg = "Press new shortcut key (Esc to cancel)...".to_string();
             }
+            5 if self.selected_row == 1 => self.start_software_update(),
             _ => {}
         }
     }
@@ -899,7 +983,12 @@ impl SettingsWidget {
             ],
             4 => KEYBINDING_ROWS.iter().map(|(label, field)| row(*label,
                 self.config.keybindings.get_by_field(field).to_string(), "Press Enter to record a shortcut.")).collect(),
-            _ => vec![row("Tuim", env!("CARGO_PKG_VERSION").into(), "A terminal workspace for editing, projects, and tools.")],
+            _ => vec![
+                row("Tuim", env!("CARGO_PKG_VERSION").into(), "A terminal workspace for editing, projects, and tools."),
+                row("Update Tuim", self.software_update.as_ref()
+                    .map(|update| format!("{}%", update.progress)).unwrap_or_else(|| "[ Update ]".into()),
+                    "Download and install the latest version, then restart Tuim."),
+            ],
         }
     }
 
@@ -1167,7 +1256,8 @@ impl SettingsWidget {
                 text_in(renderer, Rect::new(card.x + inset, y + 1, inner_w, 1), row.description, c.text_muted, bg, false);
             }
         }
-        let hint = if !self.status_msg.is_empty() { self.status_msg.as_str() }
+        let hint = if self.active_tab == 5 && !self.update_message.is_empty() { self.update_message.as_str() }
+            else if !self.status_msg.is_empty() { self.status_msg.as_str() }
             else if self.active_tab == 4 { "p Familiar  v Vim-safe  r Reset" }
             else { "↑↓ Navigate   Tab Next pane   Enter Edit   Esc Close" };
         layout.draw_footer(renderer, hint, Self::footer_actions(&layout), theme);
@@ -1198,6 +1288,69 @@ impl SettingsWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn software_update_reports_results_and_prevents_duplicate_launches() {
+        let directory = std::env::temp_dir().join(format!("tuim update's test-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let mut widget = SettingsWidget::new(
+            directory.join("settings.json").to_str().unwrap(), SettingsConfig::default());
+        widget.active_tab = 5;
+        widget.selected_row = 1;
+        widget.focus_sidebar = false;
+        for (result, exit_code, expected) in [
+            ("success", 0, "Update complete. Restart Tuim"),
+            ("failure", 0, "Update failed. Log:"),
+            ("success", 1, "Update failed. Log:"),
+        ] {
+            fs::write(directory.join("software_update.sh"), format!(
+                "#!/bin/sh\nprintf 'mock updater log' > \"$2\"\nprintf '100' > \"$3\"\nprintf '{result}' > \"$1\"\nexit {exit_code}\n"
+            )).unwrap();
+            widget.activate_selected_row();
+            let job = widget.software_update.as_ref().unwrap();
+            let child_id = job.child.id();
+            let run_dir = job.directory.clone();
+            widget.activate_selected_row();
+            assert_eq!(widget.software_update.as_ref().unwrap().child.id(), child_id);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while widget.software_update.is_some() && std::time::Instant::now() < deadline {
+                widget.poll_software_update();
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert!(widget.software_update.is_none(), "Updater did not finish");
+            assert!(widget.update_message.starts_with(expected), "{}", widget.update_message);
+            assert!(!widget.is_dirty());
+            if result == "success" && exit_code == 0 {
+                assert!(!run_dir.exists());
+            } else {
+                assert_eq!(fs::read_to_string(run_dir.join("log")).unwrap(), "mock updater log");
+            }
+        }
+        // A missing bundled script must also finish with a useful failure log.
+        fs::remove_file(directory.join("software_update.sh")).unwrap();
+        widget.activate_selected_row();
+        let run_dir = widget.software_update.as_ref().unwrap().directory.clone();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while widget.software_update.is_some() && std::time::Instant::now() < deadline {
+            widget.poll_software_update();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(widget.software_update.is_none());
+        assert!(widget.update_message.starts_with("Update failed. Log:"));
+        assert!(!fs::read_to_string(run_dir.join("log")).unwrap().is_empty());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn software_update_start_failure_is_visible_and_can_be_retried() {
+        let mut widget = SettingsWidget::new("/dev/null/settings.json", SettingsConfig::default());
+        widget.active_tab = 5;
+        widget.selected_row = 1;
+        widget.activate_selected_row();
+        assert!(widget.software_update.is_none());
+        assert!(widget.update_message.starts_with("Could not start update:"));
+        assert_eq!(widget.rows_for_tab(5)[1].value, "[ Update ]");
+    }
 
     #[test]
     fn migration_preserves_saved_bindings_and_avoids_new_conflicts() {
