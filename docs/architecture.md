@@ -59,8 +59,12 @@ a bounded differential paint flush.
 
 Native dialogs (Settings, Extension Shop, Mason, Lazy, Git Detailed, Orchestrator,
 Bug Report) share geometry and hit-test primitives in `src/tui/widgets/primitives.rs`.
-The Bug Report widget runs curl directly as a tracked child process without shell
-interpolation, reaping background child processes and deleting private temporary files on drop.
+The Bug Report widget uploads redacted JSON with a built-in Rust HTTP/TLS client
+on a background thread, polling a channel without blocking the UI. Reports stay in
+memory: no external upload program or temporary report files are needed. Requests
+have a 30-second timeout and do not follow redirects. The release build embeds the
+maintainer's public gateway URL; credentials remain server-side. The gateway and
+client contract are covered by local mock tests, not live submissions.
 
 ## Configuration and plugins
 

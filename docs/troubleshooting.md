@@ -40,9 +40,21 @@ write performance diagnostics on exit to `$XDG_DATA_HOME/tuim/diagnostics.json`
 use `:lua print(vim.fn.stdpath('log'))`.
 
 Press `F12` or choose **F1 → Report bug** to open the in-app report form.
-Ctrl+S advances to the confirmation screen; Enter or y confirms sending, and
-Escape or n cancels. Report submission runs shell-free using curl with automatic
-child cleanup, and the home path and recognized token patterns are redacted. Review the text
-before sending; this is not a guarantee that every possible secret is detected.
-The endpoint is configured with `TUIM_BUG_REPORT_URL`. GitHub issues provide
-another reporting route.
+Enter a summary and optional reproduction details, then click **Send** or press
+`Ctrl+S`. No GitHub account, token, configuration, or external upload tool is
+needed. Official releases include the reporting service address.
+
+Sending creates a **public GitHub issue** with basic runtime diagnostics (version,
+OS, architecture, theme, mode, terminal capabilities/dimensions, and emitted-byte
+count). No editor files or logs are attached. The home path and recognized token
+patterns are redacted, but this cannot detect every secret: remove private details
+before sending. `Escape` closes the dialog; an upload already in progress continues
+in the background while TUIM remains open. After a failure, `Enter` returns to the
+preserved report for editing and `Ctrl+S` retries.
+
+If the service is temporarily unavailable, check your connection and retry later,
+or use [GitHub issues](https://github.com/Tuim-editor/Rtuim/issues).
+Maintainers can find the one-time service deployment and release configuration in
+[the gateway guide](../reporting/README.md). `TUIM_BUG_REPORT_URL` remains available
+as a runtime override for testing or self-hosted deployments; normal users do not
+need to set it.

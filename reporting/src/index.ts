@@ -10,21 +10,8 @@ interface Env {
 interface ReportPayload {
   category: string;
   summary: string;
-  description: string;
-  metadata: {
-    tuimVersion?: string;
-    os?: string;
-    osVersion?: string;
-    kernel?: string;
-    architecture?: string;
-    displayServer?: string;
-    desktop?: string;
-    terminal?: string;
-    terminalVersion?: string;
-    term?: string;
-    shell?: string;
-  };
-  logs: string | null;
+  description?: string;
+  diagnostics: string;
 }
 
 interface GitHubToken {
@@ -33,7 +20,9 @@ interface GitHubToken {
 }
 
 let cachedToken: { value: string; expiresAt: number } | undefined;
-const categories = new Set(["Editor", "Terminal", "Source control", "Extensions", "Performance", "Other"]);
+const categories = new Set(["Editor", "Terminal", "Git", "Extensions", "Performance", "Other"]);
+// An astral code point may occupy twelve JSON bytes as an escaped surrogate pair.
+const maxRequestBytes = 560_000;
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -108,6 +97,10 @@ async function installationToken(env: Env): Promise<string> {
   });
   if (!response.ok) throw new Error(`GitHub App authentication failed (${response.status})`);
   const result = (await response.json()) as GitHubToken;
+  if (!result || typeof result.token !== "string" || !result.token ||
+      !Number.isFinite(Date.parse(result.expires_at))) {
+    throw new Error("Invalid GitHub App token response");
+  }
   cachedToken = { value: result.token, expiresAt: Date.parse(result.expires_at) };
   return result.token;
 }
@@ -115,19 +108,12 @@ async function installationToken(env: Env): Promise<string> {
 function validReport(value: unknown): value is ReportPayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const report = value as Partial<ReportPayload>;
-  const metadata = report.metadata as ReportPayload["metadata"] | undefined;
-  const metadataValues = metadata ? [
-    metadata.tuimVersion, metadata.os, metadata.osVersion, metadata.kernel,
-    metadata.architecture, metadata.displayServer, metadata.desktop,
-    metadata.terminal, metadata.terminalVersion, metadata.term, metadata.shell,
-  ] : [];
   return (
     typeof report.category === "string" && categories.has(report.category) &&
-    typeof report.summary === "string" && report.summary.trim().length >= 3 && report.summary.length <= 120 &&
-    typeof report.description === "string" && report.description.trim().length >= 3 && report.description.length <= 6000 &&
-    typeof metadata === "object" && metadata !== null && !Array.isArray(metadata) &&
-    metadataValues.every((item) => item === undefined || (typeof item === "string" && item.length <= 160)) &&
-    (report.logs === null || (typeof report.logs === "string" && report.logs.length <= 40_000))
+    typeof report.summary === "string" && report.summary.trim().length > 0 && [...report.summary].length <= 120 &&
+    (report.description === undefined ||
+      (typeof report.description === "string" && [...report.description].length <= 6000)) &&
+    typeof report.diagnostics === "string" && [...report.diagnostics].length <= 40_000
   );
 }
 
@@ -142,22 +128,10 @@ async function rateLimited(request: Request, env: Env): Promise<boolean> {
 }
 
 function issueBody(report: ReportPayload): string {
-  const safe = (value?: string) => (value || "unknown").replace(/[\r\n\t]+/g, " ").slice(0, 160);
-  const terminal = `${safe(report.metadata.terminal)} ${safe(report.metadata.terminalVersion)}`.trim();
-  const metadata = [
-    `- TUIM: ${safe(report.metadata.tuimVersion)}`,
-    `- OS: ${safe(report.metadata.osVersion)} (${safe(report.metadata.os)})`,
-    `- Kernel: ${safe(report.metadata.kernel)}`,
-    `- Architecture: ${safe(report.metadata.architecture)}`,
-    `- Display server: ${safe(report.metadata.displayServer)}`,
-    `- Desktop/session: ${safe(report.metadata.desktop)}`,
-    `- Terminal: ${terminal} (TERM=${safe(report.metadata.term)})`,
-    `- Shell: ${safe(report.metadata.shell)}`,
-    `- Category: ${report.category}`,
-    `- Debug logs authorized: ${report.logs !== null ? "yes" : "no"}`,
-  ].join("\n");
-  const logs = report.logs === null ? "" : `\n\n### Debug logs\n\n\`\`\`text\n${report.logs}\n\`\`\``;
-  return `### Description\n\n${report.description}\n\n### Environment\n\n${metadata}${logs}\n\n---\nSubmitted from TUIM's in-app bug reporter.`;
+  // A zero-width prefix prevents closing fences without unbounded fence growth.
+  const diagnostics = report.diagnostics.replace(/^ {0,3}~{3,}[ \t]*\r?$/gm, "\u200b$&");
+  const description = report.description ? `### Description\n\n${report.description}\n\n` : "";
+  return `${description}### Category\n\n${report.category}\n\n### Diagnostics\n\n~~~text\n${diagnostics}\n~~~\n\n---\nSubmitted from TUIM's in-app bug reporter.`;
 }
 
 async function createIssue(report: ReportPayload, env: Env): Promise<{ html_url: string; number: number }> {
@@ -173,7 +147,12 @@ async function createIssue(report: ReportPayload, env: Env): Promise<{ html_url:
     body: JSON.stringify({ title: `[${report.category}] ${report.summary.trim()}`, body: issueBody(report) }),
   });
   if (!response.ok) throw new Error(`GitHub issue creation failed (${response.status})`);
-  return (await response.json()) as { html_url: string; number: number };
+  const issue = (await response.json()) as { html_url: string; number: number };
+  if (!issue || typeof issue.html_url !== "string" || !issue.html_url.startsWith("https://") ||
+      !Number.isInteger(issue.number) || issue.number <= 0) {
+    throw new Error("Invalid GitHub issue response");
+  }
+  return issue;
 }
 
 export default {
@@ -181,11 +160,11 @@ export default {
     if (request.method === "GET") return json({ service: "TUIM bug reporting", ready: true });
     if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     if ((request.headers.get("Content-Type") ?? "").split(";", 1)[0] !== "application/json") return json({ error: "Expected JSON" }, 415);
-    if (Number(request.headers.get("Content-Length") ?? "0") > 55_000) return json({ error: "Report too large" }, 413);
+    if (Number(request.headers.get("Content-Length") ?? "0") > maxRequestBytes) return json({ error: "Report too large" }, 413);
     if (await rateLimited(request, env)) return json({ error: "Too many reports; try again later" }, 429);
 
     const raw = await request.text();
-    if (new TextEncoder().encode(raw).length > 55_000) return json({ error: "Report too large" }, 413);
+    if (new TextEncoder().encode(raw).length > maxRequestBytes) return json({ error: "Report too large" }, 413);
     let payload: unknown;
     try { payload = JSON.parse(raw); } catch { return json({ error: "Invalid JSON" }, 400); }
     if (!validReport(payload)) return json({ error: "Invalid report" }, 422);

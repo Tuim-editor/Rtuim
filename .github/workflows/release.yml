@@ -19,9 +19,18 @@ jobs:
           - runner: macos-15
             asset: tuim-macos-aarch64
     runs-on: ${{ matrix.runner }}
+    env:
+      TUIM_BUG_REPORT_URL: ${{ vars.TUIM_BUG_REPORT_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Check public reporting endpoint
+        shell: bash
+        run: |
+          case "$TUIM_BUG_REPORT_URL" in
+            https://?*) ;;
+            *) echo "::error::Set the repository Actions variable TUIM_BUG_REPORT_URL to the deployed HTTPS reporting URL before releasing."; exit 1 ;;
+          esac
       - run: cargo test --locked
       - name: Build native Rust bundle
         env:

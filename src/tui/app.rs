@@ -253,7 +253,7 @@ impl App {
             mason_widget: MasonWidget::new(),
             lazy_widget: LazyWidget::new(),
             settings_widget: SettingsWidget::new(&settings_path, config),
-            bug_report: BugReportWidget::new(&data_dir, &home_dir),
+            bug_report: BugReportWidget::new(&home_dir),
             editor_context_menu: EditorContextMenu::new(),
             show_split_menu: false,
             split_menu_index: 0,

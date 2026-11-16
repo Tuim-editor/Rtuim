@@ -754,17 +754,6 @@ pub fn handle_event(app: &mut App, ev: InputEvent) {
             sync_layout(app);
             return;
         }
-        InputEvent::Mouse {
-            x,
-            y,
-            button,
-            pressed,
-            motion,
-        } => {
-            handle_mouse_event(app, *x, *y, *button, *pressed, *motion);
-            process_widget_side_effects(app);
-            return;
-        }
         _ => {}
     }
 
@@ -787,8 +776,24 @@ pub fn handle_event(app: &mut App, ev: InputEvent) {
             app.renderer.width,
             app.renderer.height,
         );
-        app.bug_report.handle_key(&ev, &diag);
+        match &ev {
+            InputEvent::Mouse { x, y, button, pressed, motion } => {
+                if *motion {
+                    app.hover_x = Some(*x);
+                    app.hover_y = Some(*y);
+                } else {
+                    app.bug_report.handle_mouse(screen, *x, *y, *button, *pressed, &diag);
+                }
+            }
+            _ => { app.bug_report.handle_key(&ev, &diag); }
+        }
         app.invalidations.mark_chrome();
+        return;
+    }
+
+    if let InputEvent::Mouse { x, y, button, pressed, motion } = &ev {
+        handle_mouse_event(app, *x, *y, *button, *pressed, *motion);
+        process_widget_side_effects(app);
         return;
     }
 
